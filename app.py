@@ -21,17 +21,26 @@ SCOPES = [
     'https://googleapis.com'
 ]
 
-# 2. VERBINDUNG ZU GOOGLE AUFBAUEN
 @st.cache_resource
 def get_google_clients():
-    if os.path.exists(CREDENTIALS_FILE):
-        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+    try:
+        # Versuche zuerst die Secrets aus dem Online-Tresor zu laden
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        # Fallback falls die Datei doch lokal auf einem PC liegt
+        elif os.path.exists(CREDENTIALS_FILE):
+            creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+        else:
+            return None, None
+            
         drive_service = build('drive', 'v3', credentials=creds)
         gc = gspread.authorize(creds)
         return drive_service, gc
-    return None, None
+    except Exception as e:
+        st.error(f"Fehler bei der Google-Verbindung: {e}")
+        return None, None
 
-drive_service, gc = get_google_clients()
 
 if not gc:
     st.error("Fehler: Die Datei 'credentials.json' wurde nicht im App-Ordner gefunden!")
