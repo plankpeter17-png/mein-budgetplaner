@@ -9,6 +9,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import gspread
+import plotly.express as px
 
 # 1. APP-ERSTELLUNG & GRUNDEINSTELLUNG
 st.set_page_config(page_title="Cloud Budgetplaner", page_icon="☁️", layout="wide")
@@ -16,19 +17,22 @@ st.title("☁️ Google-Driven Multiplayer Budgetplaner")
 
 CREDENTIALS_FILE = 'credentials.json'
 SPREADSHEET_NAME = "Budgetplaner_DB"
+
+# KORRIGIERTE UND VOLLSTÄNDIGE GOOGLE SCOPES
 SCOPES = [
     'https://googleapis.com',
     'https://googleapis.com'
 ]
 
+# 2. VERBINDUNG ZU GOOGLE AUFBAUEN (CLOUD-OPTIMIERT)
 @st.cache_resource
 def get_google_clients():
     try:
-        # Versuche zuerst die Secrets aus dem Online-Tresor zu laden
+        # Versuche zuerst die Secrets aus dem Online-Tresor (Streamlit Cloud) zu laden
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        # Fallback falls die Datei doch lokal auf einem PC liegt
+        # Fallback falls die Datei lokal auf einem PC liegt
         elif os.path.exists(CREDENTIALS_FILE):
             creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
         else:
@@ -41,9 +45,11 @@ def get_google_clients():
         st.error(f"Fehler bei der Google-Verbindung: {e}")
         return None, None
 
+# Initialisierung der Google-Clients
+drive_service, gc = get_google_clients()
 
 if not gc:
-    st.error("Fehler: Die Datei 'credentials.json' wurde nicht im App-Ordner gefunden!")
+    st.error("Fehler: Verbindung zu Google Sheets fehlgeschlagen. Überprüfe die Secrets!")
     st.stop()
 
 # Verbindung zu den Tabellenblättern herstellen
@@ -52,7 +58,7 @@ ws_budgets = sh.worksheet("Budgets")
 ws_fixkosten = sh.worksheet("Fixkosten")
 ws_variabel = sh.worksheet("Variabel")
 
-# 3. HILFSFUNKTIONEN FÜR DATEN TRANSFER & AUTOMATIK
+# 3. HILFSFUNKTIONEN FÜR DATEN-TRANSFER & AUTOMATIK
 def load_budgets():
     data = ws_budgets.get_all_records()
     return {row["Monat"]: float(row["Betrag"]) for row in data} if data else {}
@@ -117,6 +123,26 @@ def ist_fixkosten_aktiv(start_str, intervall, ziel_str):
         return (diff % mapping.get(intervall, 1)) == 0
     except: return False
 
+# FIXKOSTEN AUTOMATISCH DEINEN WUNSCHKATEGORIEN ZUORDNEN
+def kategorisiere_fixkosten(name):
+    name_lower = str(name).lower()
+    if any(k in name_lower for k in ["versicherung", "vvg", "huk", "allianz", "krankenkasse", "kfz"]):
+        return "Versicherungen"
+    elif any(k in name_lower for k in ["strom", "energie", "vbw", "stadtwerke"]):
+        return "Strom"
+    elif any(k in name_lower for k in ["müll", "abfall", "muell"]):
+        return "Müll"
+    elif "abwasser" in name_lower:
+        return "Abwasser"
+    elif any(k in name_lower for k in ["wasser", "trinkwasser"]):
+        return "Trinkwasser"
+    elif any(k in name_lower for k in ["kredit", "darlehen", "bank", "rate", "finanzierung"]):
+        return "Kredit"
+    elif any(k in name_lower for k in ["abo", "netflix", "spotify", "disney", "prime", "gym", "rundfunk", "gez"]):
+        return "Abos"
+    else:
+        return "Abos"
+
 # 4. DIE SEITENLEISTE (SIDEBAR) FÜR STEUERUNG
 with st.sidebar:
     st.header("Nutzerprofil")
@@ -164,36 +190,43 @@ with tab1:
     c2.metric("Fixkosten", f"{summe_fix:.2f} €")
     c3.metric("Variable Ausgaben", f"{summe_var:.2f} €")
     c4.metric("Verbleibend", f"{verbleibend:.2f} €", delta=f"{verbleibend:.2f} €")
-    st.subheader("Aktuelle Buchungsliste")
-    st.dataframe(df_var_monat, use_container_width=True)
-
-with tab2:
-    st.header("Neue wiederkehrende Ausgabe")
-    with st.form("fix_form"):
-        fk_name = st.text_input("Name der Belastung")
-        fk_betrag = st.number_input("Betrag (€)", min_value=0.01)
-        fk_intervall = st.selectbox("Turnus", ["monatlich", "2-monatlich (z.B. Strom)", "3-monatlich (Quartal)", "halbjährlich", "jährlich"])
-        fk_start = st.date_input("Startet ab", date.today())
-        if st.form_submit_button("In Google Tabelle eintragen"):
-            add_fixkosten(fk_name, fk_betrag, fk_intervall, fk_start.strftime("%Y-%m"))
-            st.success("Gespeichert!")
-            st.rerun()
-    st.dataframe(df_fixkosten_all, use_container_width=True)
-
-with tab3:
-    st.header("Einzelbeleg hochladen")
-    uploaded_file = st.file_uploader("Datei wählen (PDF/Bild)", type=["pdf", "png", "jpg", "jpeg"])
-    with st.form("var_form"):
-        v_datum = st.date_input("Datum", date.today())
-        v_kat = st.selectbox("Kategorie", ["Lebensmittel", "Freizeit", "Auto", "Haushalt"])
-        v_betrag = st.number_input("Betrag (€)", min_value=0.00, step=0.01)
-        v_desc = st.text_input("Notiz", value=uploaded_file.name if uploaded_file else "")
-        if st.form_submit_button("Buchen & in Drive archivieren"):
-            drive_link = ""
-            if uploaded_file:
-                drive_link = upload_to_google_drive(
-                    uploaded_file.read(), uploaded_file.name, uploaded_file.type, v_datum.year, v_datum.month
-                )
-            add_variabel(v_datum.strftime("%Y-%m-%d"), v_kat, v_betrag, v_desc, aktueller_nutzer, drive_link)
-            st.success("Hochgeladen und gebucht!")
-            st.rerun()
+    
+    st.divider()
+    
+    # --- KUCHENDIAGRAMME ERSTELLEN ---
+    st.subheader("📊 Ausgaben-Analyse nach Kategorien")
+    
+    # Monatliche Daten aufbereiten
+    df_fk_chart = df_aktive_fk.copy()
+    if not df_fk_chart.empty:
+        df_fk_chart["Kategorie"] = df_fk_chart["Name"].apply(kategorisiere_fixkosten)
+    else:
+        df_fk_chart = pd.DataFrame(columns=["Kategorie", "Betrag"])
+        
+    df_var_chart = df_var_monat[["Kategorie", "Betrag"]].copy()
+    df_monat_gesamt = pd.concat([df_fk_chart[["Kategorie", "Betrag"]], df_var_chart], ignore_index=True)
+    if not df_monat_gesamt.empty:
+        df_monat_gesamt = df_monat_gesamt.groupby("Kategorie", as_index=False)["Betrag"].sum()
+    
+    # Jährliche Daten aufbereiten
+    aktuelle_jahr_str = aktueller_monat.strftime("%Y")
+    if not df_variabel_all.empty:
+        df_variabel_all["Datum"] = pd.to_datetime(df_variabel_all["Datum"])
+        df_jahr_var = df_variabel_all[df_variabel_all["Datum"].dt.strftime("%Y") == aktuelle_jahr_str].copy()
+    else:
+        df_jahr_var = pd.DataFrame(columns=["Kategorie", "Betrag"])
+        
+    df_jahr_fk = df_fixkosten_all.copy()
+    if not df_jahr_fk.empty:
+        df_jahr_fk["Kategorie"] = df_jahr_fk["Name"].apply(kategorisiere_fixkosten)
+        def auf_jahr_rechnen(row):
+            intervall = row["Intervall"]
+            if "monatlich" in intervall and "2-monatlich" not in intervall: return row["Betrag"] * 12
+            elif "2-monatlich" in intervall: return row["Betrag"] * 6
+            elif "3-monatlich" in intervall: return row["Betrag"] * 4
+            elif "halbjährlich" in intervall: return row["Betrag"] * 2
+            else: return row["Betrag"]
+        df_jahr_fk["Betrag"] = df_jahr_fk.apply(auf_jahr_rechnen, axis=1)
+    else:
+        df_jahr_fk = pd.DataFrame(columns=["Kategorie", "Betrag"])
+        
