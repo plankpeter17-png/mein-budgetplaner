@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date
 import os
 import io
+import json
 
 # Google API Bibliotheken importieren
 from google.oauth2.service_account import Credentials
@@ -18,19 +19,20 @@ st.title("☁️ Google-Driven Multiplayer Budgetplaner")
 CREDENTIALS_FILE = 'credentials.json'
 SPREADSHEET_NAME = "Budgetplaner_DB"
 
-# KORRIGIERTE UND VOLLSTÄNDIGE GOOGLE SCOPES
+# VOLLSTÄNDIGE GOOGLE SCOPES
 SCOPES = [
     'https://googleapis.com',
     'https://googleapis.com'
 ]
 
-# 2. VERBINDUNG ZU GOOGLE AUFBAUEN (CLOUD-OPTIMIERT)
+# 2. VERBINDUNG ZU GOOGLE AUFBAUEN
 @st.cache_resource
 def get_google_clients():
     try:
         # Versuche zuerst die Secrets aus dem Online-Tresor (Streamlit Cloud) zu laden
         if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
+            json_text = st.secrets["gcp_service_account"]["json_key"]
+            creds_dict = json.loads(json_text)
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         # Fallback falls die Datei lokal auf einem PC liegt
         elif os.path.exists(CREDENTIALS_FILE):
@@ -167,9 +169,14 @@ df_fixkosten_all = load_fixkosten()
 df_variabel_all = load_variabel()
 aktuelles_budget = load_budgets().get(ziel_str, 1000.0)
 
-aktive_fk = [fk for _, fk in df_fixkosten_all.iterrows() if ist_fixkosten_aktiv(fk["Startmonat"], fk["Intervall"], ziel_str)]
+# Fixkosten filtern
+aktive_fk = []
+for _, fk in df_fixkosten_all.iterrows():
+    if ist_fixkosten_aktiv(fk["Startmonat"], fk["Intervall"], ziel_str):
+        aktive_fk.append(fk)
 df_aktive_fk = pd.DataFrame(aktive_fk) if aktive_fk else pd.DataFrame(columns=["Name", "Betrag", "Intervall"])
 
+# Variable Kosten filtern
 if not df_variabel_all.empty:
     df_var_monat = df_variabel_all[df_variabel_all["Datum"].apply(lambda x: x.strftime("%Y-%m") == ziel_str)]
 else:
@@ -228,5 +235,3 @@ with tab1:
             else: return row["Betrag"]
         df_jahr_fk["Betrag"] = df_jahr_fk.apply(auf_jahr_rechnen, axis=1)
     else:
-        df_jahr_fk = pd.DataFrame(columns=["Kategorie", "Betrag"])
-        
