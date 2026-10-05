@@ -3,8 +3,6 @@ import pandas as pd
 from datetime import datetime, date
 import os
 import io
-import json
-import base64
 
 # Google API Bibliotheken importieren
 from google.oauth2.service_account import Credentials
@@ -26,15 +24,25 @@ SCOPES = [
     'https://googleapis.com'
 ]
 
-# 2. VERBINDUNG ZU GOOGLE AUFBAUEN (BASE64 VERFAHREN)
+# 2. VERBINDUNG ZU GOOGLE AUFBAUEN
 @st.cache_resource
 def get_google_clients():
     try:
         if "gcp_service_account" in st.secrets:
-            encoded_key = st.secrets["gcp_service_account"]["encoded_key"]
-            decoded_bytes = base64.b64decode(encoded_key)
-            json_text = decoded_bytes.decode("utf-8")
-            creds_dict = json.loads(json_text)
+            # Liest die flachen Klartext-Secrets direkt aus eurem Tresor aus
+            creds_dict = {
+                "type": "service_account",
+                "project_id": st.secrets["gcp_service_account"]["project_id"],
+                "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
+                "private_key": st.secrets["gcp_service_account"]["private_key"].replace(r'\n', '\n'),
+                "client_email": st.secrets["gcp_service_account"]["client_email"],
+                "client_id": st.secrets["gcp_service_account"]["client_id"],
+                "auth_uri": "https://google.com",
+                "token_uri": "https://googleapis.com",
+                "auth_provider_x509_cert_url": "https://googleapis.com",
+                "client_x509_cert_url": st.secrets["gcp_service_account"]["client_x509_cert_url"],
+                "universe_domain": "googleapis.com"
+            }
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         elif os.path.exists(CREDENTIALS_FILE):
             creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
@@ -224,16 +232,3 @@ with tab1:
         df_jahr_var = pd.DataFrame(columns=["Kategorie", "Betrag"])
         
     df_jahr_fk = df_fixkosten_all.copy()
-    if not df_jahr_fk.empty:
-        df_jahr_fk["Kategorie"] = df_jahr_fk["Name"].apply(kategorisiere_fixkosten)
-        def auf_jahr_rechnen(row):
-            intervall = row["Intervall"]
-            if "monatlich" in intervall and "2-monatlich" not in intervall: return row["Betrag"] * 12
-            elif "2-monatlich" in intervall: return row["Betrag"] * 6
-            elif "3-monatlich" in intervall: return row["Betrag"] * 4
-            elif "halbjährlich" in intervall: return row["Betrag"] * 2
-            else: return row["Betrag"]
-        df_jahr_fk["Betrag"] = df_jahr_fk.apply(auf_jahr_rechnen, axis=1)
-    else:
-        df_jahr_fk = pd.DataFrame(columns=["Kategorie", "Betrag"])
-        
