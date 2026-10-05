@@ -16,7 +16,9 @@ st.set_page_config(page_title="Cloud Budgetplaner", page_icon="☁️", layout="
 st.title("☁️ Google-Driven Multiplayer Budgetplaner")
 
 CREDENTIALS_FILE = 'credentials.json'
-SPREADSHEET_NAME = "Budgetplaner_DB"
+
+# DEINE DIREKTE TABELLEN-ID FEST HINTERLEGT
+TABELLEN_ID = "19ucw4TkvXTS-9QQVE7OriRJZP_ZX2vgidtfzxqZrRZo"
 
 # VOLLSTÄNDIGE GOOGLE SCOPES
 SCOPES = [
@@ -29,7 +31,6 @@ SCOPES = [
 def get_google_clients():
     try:
         if "gcp_service_account" in st.secrets:
-            # Liest die flachen Klartext-Secrets direkt aus eurem Tresor aus
             creds_dict = {
                 "type": "service_account",
                 "project_id": st.secrets["gcp_service_account"]["project_id"],
@@ -63,11 +64,15 @@ if not gc:
     st.error("Fehler: Verbindung zu Google Sheets fehlgeschlagen. Überprüfe die Secrets!")
     st.stop()
 
-# Verbindung zu den Tabellenblättern herstellen
-sh = gc.open(SPREADSHEET_NAME)
-ws_budgets = sh.worksheet("Budgets")
-ws_fixkosten = sh.worksheet("Fixkosten")
-ws_variabel = sh.worksheet("Variabel")
+# VERBINDUNG ÜBER DIE EINDEUTIGE ID (ABSOLUT SICHER)
+try:
+    sh = gc.open_by_key(TABELLEN_ID)
+    ws_budgets = sh.worksheet("Budgets")
+    ws_fixkosten = sh.worksheet("Fixkosten")
+    ws_variabel = sh.worksheet("Variabel")
+except Exception as e:
+    st.error(f"Tabelle konnte nicht geöffnet werden. Hast du die Bot-E-Mail in Google Sheets als Editor hinzugefügt? Fehler: {e}")
+    st.stop()
 
 # 3. HILFSFUNKTIONEN FÜR DATEN-TRANSFER & AUTOMATIK
 def load_budgets():
@@ -227,8 +232,3 @@ with tab1:
     aktuelle_jahr_str = aktueller_monat.strftime("%Y")
     if not df_variabel_all.empty:
         df_variabel_all["Datum"] = pd.to_datetime(df_variabel_all["Datum"])
-        df_jahr_var = df_variabel_all[df_variabel_all["Datum"].dt.strftime("%Y") == aktuelle_jahr_str].copy()
-    else:
-        df_jahr_var = pd.DataFrame(columns=["Kategorie", "Betrag"])
-        
-    df_jahr_fk = df_fixkosten_all.copy()
