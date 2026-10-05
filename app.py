@@ -29,12 +29,10 @@ SCOPES = [
 @st.cache_resource
 def get_google_clients():
     try:
-        # Versuche zuerst die Secrets aus dem Online-Tresor (Streamlit Cloud) zu laden
         if "gcp_service_account" in st.secrets:
             json_text = st.secrets["gcp_service_account"]["json_key"]
             creds_dict = json.loads(json_text)
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        # Fallback falls die Datei lokal auf einem PC liegt
         elif os.path.exists(CREDENTIALS_FILE):
             creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
         else:
@@ -235,3 +233,5 @@ with tab1:
             else: return row["Betrag"]
         df_jahr_fk["Betrag"] = df_jahr_fk.apply(auf_jahr_rechnen, axis=1)
     else:
+        df_jahr_fk = pd.DataFrame(columns=["Kategorie", "Betrag"])
+        
