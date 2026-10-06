@@ -20,10 +20,10 @@ CREDENTIALS_FILE = 'credentials.json'
 # DEINE DIREKTE TABELLEN-ID FEST HINTERLEGT
 TABELLEN_ID = "19ucw4TkvXTS-9QQVE7OriRJZP_ZX2vgidtfzxqZrRZo"
 
-# VOLLSTÄNDIGE GOOGLE SCOPES
+# KORRIGIERTE GOOGLE SCOPES (ZUGRIFF AUF SHEETS UND DRIVE)
 SCOPES = [
-    'https://googleapis.com',
-    'https://googleapis.com'
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
 ]
 
 # 2. VERBINDUNG ZU GOOGLE AUFBAUEN
@@ -31,6 +31,7 @@ SCOPES = [
 def get_google_clients():
     try:
         if "gcp_service_account" in st.secrets:
+            # KORRIGIERTES CREDS_DICT (LÄDT JETZT ALLES AUS DEN SECRETS)
             creds_dict = {
                 "type": "service_account",
                 "project_id": st.secrets["gcp_service_account"]["project_id"],
@@ -38,11 +39,11 @@ def get_google_clients():
                 "private_key": st.secrets["gcp_service_account"]["private_key"].replace(r'\n', '\n'),
                 "client_email": st.secrets["gcp_service_account"]["client_email"],
                 "client_id": st.secrets["gcp_service_account"]["client_id"],
-                "auth_uri": "https://google.com",
-                "token_uri": "https://googleapis.com",
-                "auth_provider_x509_cert_url": "https://googleapis.com",
+                "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
+                "token_uri": st.secrets["gcp_service_account"]["token_uri"],
+                "auth_provider_x509_cert_url": st.secrets["gcp_service_account"]["auth_provider_x509_cert_url"],
                 "client_x509_cert_url": st.secrets["gcp_service_account"]["client_x509_cert_url"],
-                "universe_domain": "googleapis.com"
+                "universe_domain": st.secrets["gcp_service_account"].get("universe_domain", "googleapis.com")
             }
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         elif os.path.exists(CREDENTIALS_FILE):
