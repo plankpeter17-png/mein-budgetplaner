@@ -68,6 +68,13 @@ if not gc:
 # VERBINDUNG ÜBER DIE EINDEUTIGE ID (ABSOLUT SICHER)
 try:
     sh = gc.open_by_key(TABELLEN_ID)
+    
+    # --- NEUER DEBUG-CODE ---
+    # Wir lassen uns auf der Webseite anzeigen, welche Blätter der Bot WIRKLICH findet!
+    alle_blaetter = [ws.title for ws in sh.worksheets()]
+    st.info(f"🕵️ DEBUG-INFO: Der Bot sieht aktuell folgende Tabellenblätter in der Datei: {alle_blaetter}")
+    # ------------------------
+
     ws_budgets = sh.worksheet("Budgets")
     ws_fixkosten = sh.worksheet("Fixkosten")
     ws_variabel = sh.worksheet("Variabel")
